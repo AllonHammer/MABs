@@ -1,0 +1,6 @@
+joblib
+tqdm
+sklearn
+pandas
+matplotlib
+awscli
