@@ -77,6 +77,7 @@ def mab_training(mab, epochs, batch_size, plot=False):
     model = create_cnn_model()
     # Initial evaluation
     previous_acc = model.evaluate(mab.x_test, mab.y_test, verbose=0)[1]
+    max_acc = previous_acc
     # Losses per epoch
     losses = [previous_acc]
     # Cumulative samples ingested by network
@@ -84,7 +85,7 @@ def mab_training(mab, epochs, batch_size, plot=False):
     # Time elapsed per epoch
     times = [0]
     start_time = time()
-    for epoch in tqdm(range(1, epochs+1)):
+    for epoch in range(1, epochs+1):
         # Select arm (data cluster) according to MAB
         mab.select_arm()
         # Get a batch_size of data from this cluster
@@ -94,24 +95,36 @@ def mab_training(mab, epochs, batch_size, plot=False):
         # Observe loss on test set
         new_acc = model.evaluate(mab.x_test, mab.y_test, verbose=0)[1]
         # Calculate reward (improvement from previous loss)
-        reward = max(new_acc - previous_acc, 0)  # keep rewards between 0 and 1
+        # reward = max(new_acc - previous_acc, 0)  # keep rewards between 0 and 1
+        reward = 1 if new_acc > max_acc else 0
+        # reward = max(max_acc - previous_acc, 0)  # keep rewards between 0 and 1
         # Update MABs weights
         mab.update(reward)
         # Append lists for evaluation
         losses.append(new_acc)
         samples.append(epoch*batch_size)
         times.append(round(time()- start_time))
+        if epoch % 100 ==0:
+          try:
+            print(epoch, mab.counts)
+          except:
+            pass
         # Update current loss
         previous_acc = new_acc
+        max_acc = max(new_acc,max_acc)
     # plot on graph
     eval = model.evaluate(mab.x_test, mab.y_test, verbose=0)
     print('Final evaluation is ', eval)
+    try:
+      print(f'Score at 100:{losses[int(100/batch_size)]}, 500:{losses[int(500/batch_size)]}, 1000:{losses[int(1000/batch_size)]}, 2500:{losses[int(2500/batch_size)]}')
+    except:
+      pass
     if plot:
         plot_performance(losses, times, samples, file_name=type(mab).__name__)
     # write results to csv
     results = {'samples': samples, 'times': times, 'losses' : losses}
     save_results_to_csv(model_name=type(mab).__name__, data_dict=results)
-
+    return results
 
 def run_parallel(mab_type, params):
     """
