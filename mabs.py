@@ -47,9 +47,17 @@ class MAB:
 class MabRandomArm(MAB):
     def __init__(self):
         super().__init__()
+        self.counts = np.zeros(self.n_arms)
+        self.rewards = [[] for i in range(self.n_arms)]
+
 
     def select_arm(self):
         self.current_arm = np.random.choice(self.arms_names)
+        self.counts[self.current_arm] += 1
+      
+    def update(self, reward):
+        arm = self.current_arm
+        self.rewards[arm].append(reward)
 
 
 class MabEpsilonGreedy(MAB):
@@ -84,6 +92,66 @@ class MabUcb1(MAB):
         super().__init__()
         self.counts = np.zeros(self.n_arms)
         self.values = np.zeros(self.n_arms)
+        self.rewards = [[] for i in range(self.n_arms)]
+
+    def select_arm(self):
+        ucb_values = np.zeros(self.n_arms)
+        total_counts = self.counts.sum()
+
+        for arm in range(self.n_arms):
+            value = self.values[arm] + np.sqrt((2 * np.log(total_counts)) / float(self.counts[arm] + 1))
+            ucb_values[arm] = value
+
+        self.current_arm = np.argmax(ucb_values)
+
+    def update(self, reward):
+        arm = self.current_arm
+        # update counts for chosen arm
+        self.counts[arm] += 1
+        n = self.counts[arm]
+        self.rewards[arm].append(reward)
+
+        # Update mean reward for chosen arm
+        value = self.values[arm]
+        new_value = ((n - 1) / float(n)) * value + (1 / float(n)) * reward
+        self.values[arm] = new_value
+
+
+class MabSWUcb1(MAB):
+    def __init__(self, n):
+        super().__init__()
+        self.counts = np.zeros(self.n_arms)
+        self.values = np.zeros(self.n_arms)
+        self.n = n
+        self.rewards = [[] for i in range(self.n_arms)]
+
+    def select_arm(self):
+        ucb_values = np.zeros(self.n_arms)
+        total_counts = self.counts.sum()
+
+        for arm in range(self.n_arms):
+            value = self.values[arm] + np.sqrt((2 * np.log(total_counts)) / float(self.counts[arm] + 1))
+            ucb_values[arm] = value
+
+        self.current_arm = np.argmax(ucb_values)
+
+    def update(self, reward):
+        arm = self.current_arm
+        # update counts for chosen arm
+        self.counts[arm] = min(self.counts[arm]+1,self.n)
+        n = self.counts[arm]
+        self.rewards[arm].append(reward+random.random()/1000)
+
+        # Update mean reward for chosen arm
+        value = self.values[arm]
+        new_value = np.mean(self.rewards[arm]) if n<self.n else np.mean(self.rewards[arm][-self.n:])
+        self.values[arm] = new_value
+
+class ExpMabUcb1(MAB):
+    def __init__(self):
+        super().__init__()
+        self.counts = np.zeros(self.n_arms)
+        self.values = np.zeros(self.n_arms)
 
     def select_arm(self):
         ucb_values = np.zeros(self.n_arms)
@@ -103,9 +171,8 @@ class MabUcb1(MAB):
 
         # Update mean reward for chosen arm
         value = self.values[arm]
-        new_value = ((n - 1) / float(n)) * value + (1 / float(n)) * reward
+        new_value = 0.9 * value + 0.1 * reward
         self.values[arm] = new_value
-
 
 class MabThompsonSampling(MAB):
     def __init__(self):
@@ -160,6 +227,7 @@ class MabExp3(MAB):
         self.weights = np.ones(self.n_arms)
         self.gamma = gamma
         self.dist = self.weights/self.n_arms
+        self.counts = np.zeros(self.n_arms)
 
     def select_arm(self):
 
@@ -172,6 +240,7 @@ class MabExp3(MAB):
     def update(self, reward):
 
         arm = self.current_arm
+        self.counts[arm] += 1
 
         # Unbiased estimate for reward
         r_hat = reward / self.dist[arm]
@@ -220,3 +289,123 @@ class MabFtl(MAB):
 
         # Update values of selected arm (all other arms remain the same)
         self.values[arm] += reward
+        
+ class MabEpsUcb1(MAB):
+    def __init__(self, eps):
+        super().__init__()
+        self.counts = np.zeros(self.n_arms)
+        self.values = np.zeros(self.n_arms)
+        self.rewards = [[] for i in range(self.n_arms)]
+        self.eps = eps
+        self.last_play = np.zeros(self.n_arms)
+        self.round = 0
+
+    def select_arm(self):
+      if random.random()>self.eps:
+        ucb_values = np.zeros(self.n_arms)
+        total_counts = self.counts.sum()
+
+        for arm in range(self.n_arms):
+            value = self.values[arm] + np.sqrt((2 * np.log(total_counts)) / float(self.counts[arm] + 1))
+            ucb_values[arm] = value
+
+        self.current_arm = np.argmax(ucb_values)
+      else:
+        self.current_arm = np.random.choice(np.arange(self.n_arms), p=(self.round - self.last_play)/np.sum((self.round - self.last_play)))
+
+    def update(self, reward):
+        arm = self.current_arm
+        # update counts for chosen arm
+        self.counts[arm] += 1
+        n = self.counts[arm]
+        self.rewards[arm].append(reward)
+        self.round += 1
+        self.last_play[arm] = self.round
+
+        # Update mean reward for chosen arm
+        value = self.values[arm]
+        new_value = ((n - 1) / float(n)) * value + (1 / float(n)) * reward
+        self.values[arm] = new_value
+        
+class MabCDUcb1(MAB):
+    def __init__(self, n):
+        super().__init__()
+        self.counts = np.zeros(self.n_arms)
+        self.values = np.zeros(self.n_arms)
+        self.n = n
+        self.rewards = [[] for i in range(self.n_arms)]
+
+    def select_arm(self):
+        ucb_values = np.zeros(self.n_arms)
+        total_counts = self.counts.sum()
+
+        for arm in range(self.n_arms):
+            value = self.values[arm] + np.sqrt((2 * np.log(total_counts)) / float(self.counts[arm] + 1))
+            ucb_values[arm] = value
+
+        self.current_arm = np.argmax(ucb_values)
+
+    def update(self, reward):
+        arm = self.current_arm
+        # update counts for chosen arm
+        self.counts[arm] = self.counts[arm]+1
+        n = self.counts[arm]
+        self.rewards[arm].append(reward)
+
+        # Update mean reward for chosen arm
+        value = self.values[arm]
+        cond = abs(np.mean(self.rewards[arm])-np.mean(self.rewards[arm][-self.n:]))
+        if cond<0.1:
+          new_value = np.mean(self.rewards[arm])  
+        else:
+          print('restart:',arm,np.mean(self.rewards[arm]), np.mean(self.rewards[arm][-self.n:]), np.mean(self.rewards[arm][-10:]), n)
+          new_value = np.mean(self.rewards[arm][-self.n:])
+          self.counts[arm] = self.n
+          self.rewards[arm] = self.rewards[arm][-self.n:]
+        self.values[arm] = new_value
+        
+        
+ class MabEpsCDUcb1(MAB):
+    def __init__(self, eps, n):
+        super().__init__()
+        self.counts = np.zeros(self.n_arms)
+        self.values = np.zeros(self.n_arms)
+        self.rewards = [[] for i in range(self.n_arms)]
+        self.eps = eps
+        self.last_play = np.zeros(self.n_arms)
+        self.round = 0
+        self.n = n
+
+    def select_arm(self):
+      if random.random()>self.eps or self.round<5:
+        ucb_values = np.zeros(self.n_arms)
+        total_counts = self.counts.sum()
+
+        for arm in range(self.n_arms):
+            value = self.values[arm] + np.sqrt((2 * np.log(total_counts)) / float(self.counts[arm] + 1))
+            ucb_values[arm] = value
+
+        self.current_arm = np.argmax(ucb_values)
+      else:
+        self.current_arm = np.random.choice(np.arange(self.n_arms), p=(self.round - self.last_play)/np.sum((self.round - self.last_play)))
+
+    def update(self, reward):
+        arm = self.current_arm
+        # update counts for chosen arm
+        self.counts[arm] += 1
+        n = self.counts[arm]
+        self.rewards[arm].append(reward)
+        self.round += 1
+        self.last_play[arm] = self.round
+
+        # Update mean reward for chosen arm
+        value = self.values[arm]
+        cond = abs(np.mean(self.rewards[arm])-np.mean(self.rewards[arm][-self.n:]))
+        if cond<0.1:
+          new_value = np.mean(self.rewards[arm])  
+        else:
+          print('restart:',arm,np.mean(self.rewards[arm]), np.mean(self.rewards[arm][-self.n:]), np.mean(self.rewards[arm][-10:]), n)
+          new_value = np.mean(self.rewards[arm][-self.n:])
+          self.counts[arm] = self.n
+          self.rewards[arm] = self.rewards[arm][-self.n:]
+        self.values[arm] = new_value
